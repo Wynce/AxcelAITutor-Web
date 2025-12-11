@@ -9,36 +9,22 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Facades\Image;
-
 use App\Models\User;
-/*Uses*/
-
+use App\Models\ChatHistory;
+use App\Traits\LogsActivity;
 use Auth;
-
 use Session;
-
 use flash;
-
 use Validator;
-
 use DB;
-
 use File;
+use Carbon\Carbon;
 
 class UsersController extends Controller
-
 {
-
-    /*
-
-     * Define abjects of models, services.
-
-     */
+    use LogsActivity;
 
     function __construct() {
-
-
-
     }
 
 
@@ -84,32 +70,39 @@ class UsersController extends Controller
      */
 
     public function getRecords(Request $request) {
-        //DB::enableQueryLog();
-        $user = Auth::guard('admin')->user();
-        $currentUpasanaKendra = $user->upasana_kendra_id;
         $usersDetails = User::select('users.*')->where('users.is_deleted','!=',1);
         
+        // Advanced filtering
+        if (!empty($request->input('status'))) {
+            $usersDetails = $usersDetails->where('users.status', $request->input('status'));
+        }
+
+        if (!empty($request->input('country'))) {
+            $usersDetails = $usersDetails->where('users.country', 'like', '%' . $request->input('country') . '%');
+        }
+
+        if (!empty($request->input('date_from'))) {
+            $usersDetails = $usersDetails->whereDate('users.created_at', '>=', $request->input('date_from'));
+        }
+
+        if (!empty($request->input('date_to'))) {
+            $usersDetails = $usersDetails->whereDate('users.created_at', '<=', $request->input('date_to'));
+        }
+        
         if(!empty($request['search']['value'])) {
-
-            $field = ['users.first_name','users.email','users.country']; // 'users.username',
-
-            $namefield = ['users.first_name','users.email','users.country'];  // 'users.username',
-
-            $search=($request['search']['value']);
+            $field = ['users.first_name','users.last_name','users.email','users.country'];
+            $namefield = ['users.first_name','users.last_name','users.email','users.country'];
+            $search = $request['search']['value'];
 
             $usersDetails = $usersDetails->Where(function ($query) use($search, $field,$namefield) {
                 if (strpos($search, ' ') !== false){
-
-                    $s=explode(' ',$search);
-
+                    $s = explode(' ',$search);
                     foreach($s as $val) {
                         for ($i = 0; $i < count($namefield); $i++){
                             $query->orwhere($namefield[$i], 'like',  '%' . $val .'%');
                         }
                     }
-                }
-                else {
-
+                } else {
                     for ($i = 0; $i < count($field); $i++){
                         $query->orwhere($field[$i], 'like',  '%' . $search .'%');
                     }
@@ -131,15 +124,26 @@ class UsersController extends Controller
 
         if(isset($request['order'][0])){
             $postedorder = $request['order'][0];
-            if($postedorder['column'] == 0) $orderby = 'users.id';
-            // elseif($postedorder['column'] == 1) $orderby = 'users.username';
-            elseif($postedorder['column'] == 1) $orderby = 'users.first_name'; 
-            elseif($postedorder['column'] == 2) $orderby = 'users.email';
-            elseif($postedorder['column'] == 3) $orderby = 'users.country'; 
-            elseif($postedorder['column'] == 4) $orderby = 'users.birth_year'; 
+            // Column mapping after adding checkbox and image columns
+            // 0: checkbox, 1: image, 2: fullname (first_name), 3: email, 4: birth_year, 5: country
+            switch ($postedorder['column']) {
+                case 2:
+                    $orderby = 'users.first_name';
+                    break;
+                case 3:
+                    $orderby = 'users.email';
+                    break;
+                case 4:
+                    $orderby = 'users.birth_year';
+                    break;
+                case 5:
+                    $orderby = 'users.country';
+                    break;
+                default:
+                    $orderby = 'users.id';
+            }
             
-            // Set default order as descending for initial load
-            $orderorder = $postedorder['dir'] == 'asc' ? 'desc' : 'asc';
+            $orderorder = $postedorder['dir'] ?? 'desc';
             $usersDetails = $usersDetails->orderBy($orderby, $orderorder);
         } else {
             // Default sorting when no specific column is selected
@@ -177,22 +181,29 @@ class UsersController extends Controller
                 $birth_year   = (!empty($recordDetailsVal['birth_year'])) ? $recordDetailsVal['birth_year'] : '-';
                
                  if ($recordDetailsVal['status'] == 'active') {
-                    $status = '<a href="javascript:void(0)" onclick=" return ConfirmStatusFunction(\''.route('adminUserChangeStatus', [base64_encode($recordDetailsVal['id']), 'block']).'\');" class="btn btn-icon btn-success" title="Block"><i class="fa fa-unlock"></i> </a>';
+                    $status = '<a href="javascript:void(0)" onclick=" return ConfirmStatusFunction(\''.route('adminUserChangeStatus', [base64_encode($recordDetailsVal['id']), 'blocked']).'\');" class="btn btn-icon btn-success" title="Block"><i class="fa fa-unlock"></i> </a>';
                 } else {
                     $status = '<a href="javascript:void(0)" onclick=" return ConfirmStatusFunction(\''.route('adminUserChangeStatus', [base64_encode($recordDetailsVal['id']), 'active']).'\');" class="btn btn-icon btn-danger" title="Active"><i class="fa fa-lock"></i> </a>';
                 }
                /* $action = '<a href="'.route('adminUserEdit', base64_encode($id)).'" title="Edit" class="btn btn-icon btn-success"><i class="fas fa-edit"></i> </a>&nbsp;&nbsp;';*/
+                $action .= '<a href="'.route('admin.users.view', base64_encode($id)).'" title="View" class="btn btn-icon btn-info"><i class="fas fa-eye"></i></a> ';
                 $action .= '<a href="javascript:void(0)" onclick=" return ConfirmDeleteFunction(\''.route('adminUserDelete', base64_encode($id)).'\');"  title="Delete" class="btn btn-icon btn-danger"><i class="fas fa-trash"></i></a>';
  
                 $i++;
 
-                $arr[] = [ $image , $fullname, $email, $birth_year , $country,$status,$action]; // , $username
+                // Get chat count
+                $chatCount = ChatHistory::where('user_id', $id)->where('is_deleted', 0)->count();
+                $lastActive = !empty($recordDetailsVal['last_active_at']) ? Carbon::parse($recordDetailsVal['last_active_at'])->format('Y-m-d H:i') : 'Never';
+
+                $checkbox = '<input type="checkbox" class="user-checkbox" value="'.base64_encode($id).'">';
+
+                $arr[] = [ $checkbox, $image , $fullname, $email, $birth_year , $country, $chatCount, $lastActive, $status, $action];
 
             }
 
         }
         else {
-            $arr[] = ['','','', "No record found" ,'' ,'', '', ''];
+            $arr[] = ['','','', "No record found" ,'' ,'', '', '', '', ''];
         }
 
         $json_arr = [
@@ -456,6 +467,33 @@ class UsersController extends Controller
     * Delete Record
     * @param  $id = Id
     */
+    /**
+     * View user details
+     */
+    public function view($id)
+    {
+        $id = base64_decode($id);
+        $user = User::with('chatHistory')->findOrFail($id);
+
+        $data = [];
+        $data['pageTitle'] = "User Details";
+        $data['current_module_name'] = "User Details";
+        $data['module_name'] = "Users";
+        $data['module_url'] = route('adminUsers');
+        $data['user'] = $user;
+        $data['chatCount'] = ChatHistory::where('user_id', $id)->where('is_deleted', 0)->count();
+        $data['recentChats'] = ChatHistory::where('user_id', $id)
+            ->where('is_deleted', 0)
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        return view('Admin/Users/view', $data);
+    }
+
+    /**
+     * Delete user
+     */
     public function delete($id) {
         if(empty($id)) {
             Session::flash('error', "Opps.! Something went wrong, please try again.");
@@ -463,10 +501,12 @@ class UsersController extends Controller
         }
 
         $id = base64_decode($id);
-        $result = User::find($id);
+        $user = User::find($id);
 
-        if (!empty($result)){
-            $users = User::where('id', $id)->update(['is_deleted' => '1']);
+        if (!empty($user)){
+            $oldData = $user->toArray();
+            $user->update(['is_deleted' => 1]);
+            $this->logDeleted($user, 'User deleted');
             Session::flash('success', "Record deleted successfully.");
             return redirect()->back();
         } else {
@@ -479,21 +519,120 @@ class UsersController extends Controller
      * Change status for Record [active/block].
      * @param  $id = Id, $status = active/block 
      */
+    /**
+     * Change user status
+     */
     public function changeStatus($id, $status) {
         if(empty($id)) {
             Session::flash('error', "Opps.! Something went wrong, please try again.");
             return redirect(route('adminUsers'));
         }
         $id = base64_decode($id);
+        $user = User::findOrFail($id);
+        $oldStatus = $user->status;
+        
+        $user->update(['status' => $status]);
+        $this->logStatusChange($user, $oldStatus, $status, 'User status changed');
+        
+        Session::flash('success', "Status updated successfully.");
+        return redirect()->back();
+    }
 
-        $result = User::where('id', $id)->update(['status' => $status]);
-        if ($result) {
-            Session::flash('success', "Status updated successfully.");
-            return redirect()->back();
-        } else {
-            Session::flash('error', "Opps.! Something went wrong, please try again.");
-            return redirect()->back();
+    /**
+     * Bulk operations
+     */
+    public function bulkAction(Request $request)
+    {
+        $action = $request->input('action');
+        $userIds = $request->input('user_ids', []);
+
+        if (empty($userIds)) {
+            return response()->json(['success' => false, 'message' => 'No users selected']);
         }
+
+        $ids = array_map(function($id) {
+            return base64_decode($id);
+        }, $userIds);
+
+        try {
+            switch ($action) {
+                case 'delete':
+                    User::whereIn('id', $ids)->update(['is_deleted' => 1]);
+                    $this->logActivity('bulk_delete', null, 'Bulk deleted ' . count($ids) . ' users');
+                    return response()->json(['success' => true, 'message' => count($ids) . ' users deleted successfully']);
+                
+                case 'activate':
+                    User::whereIn('id', $ids)->update(['status' => 'active']);
+                    $this->logActivity('bulk_activate', null, 'Bulk activated ' . count($ids) . ' users');
+                    return response()->json(['success' => true, 'message' => count($ids) . ' users activated successfully']);
+                
+                case 'deactivate':
+                    User::whereIn('id', $ids)->update(['status' => 'inactive']);
+                    $this->logActivity('bulk_deactivate', null, 'Bulk deactivated ' . count($ids) . ' users');
+                    return response()->json(['success' => true, 'message' => count($ids) . ' users deactivated successfully']);
+                
+                default:
+                    return response()->json(['success' => false, 'message' => 'Invalid action']);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Export users to CSV
+     */
+    public function export(Request $request)
+    {
+        $users = User::where('is_deleted', '!=', 1);
+
+        // Apply filters
+        if ($request->input('status')) {
+            $users = $users->where('status', $request->input('status'));
+        }
+        if ($request->input('country')) {
+            $users = $users->where('country', 'like', '%' . $request->input('country') . '%');
+        }
+        if ($request->input('date_from')) {
+            $users = $users->whereDate('created_at', '>=', $request->input('date_from'));
+        }
+        if ($request->input('date_to')) {
+            $users = $users->whereDate('created_at', '<=', $request->input('date_to'));
+        }
+
+        $users = $users->get();
+
+        $filename = 'users_export_' . date('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function() use ($users) {
+            $file = fopen('php://output', 'w');
+            
+            // Add CSV headers
+            fputcsv($file, ['ID', 'Name', 'Email', 'Country', 'Birth Year', 'Status', 'Created At', 'Last Active']);
+
+            // Add data rows
+            foreach ($users as $user) {
+                fputcsv($file, [
+                    $user->id,
+                    $user->first_name . ' ' . $user->last_name,
+                    $user->email,
+                    $user->country ?? 'N/A',
+                    $user->birth_year ?? 'N/A',
+                    $user->status,
+                    $user->created_at->format('Y-m-d H:i:s'),
+                    $user->last_active_at ? $user->last_active_at->format('Y-m-d H:i:s') : 'Never',
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        $this->logActivity('export', null, 'Exported ' . $users->count() . ' users to CSV');
+        return response()->stream($callback, 200, $headers);
     }
 
     public function getUsers(Request $request)

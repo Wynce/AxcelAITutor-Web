@@ -75,6 +75,95 @@
             </a>
           </li>
 
+          @php
+            if((Request::segment(2)=='admins')){
+              $activeClass = 'active';
+            }
+            else{
+             $activeClass = '';
+            }
+          @endphp
+
+          <li class="nav-item has-treeview">
+            <a href="{{route('admin.admins.index')}}" class="nav-link {{$activeClass}}">
+            <i class="nav-icon fas fa-user-shield"></i>
+            <p>
+            Admins
+            </p>
+            </a>
+          </li>
+
+          @php
+            if((Request::segment(2)=='roles')){
+              $activeClass = 'active';
+            }
+            else{
+             $activeClass = '';
+            }
+          @endphp
+
+          <li class="nav-item has-treeview">
+            <a href="{{route('admin.roles.index')}}" class="nav-link {{$activeClass}}">
+            <i class="nav-icon fas fa-user-tag"></i>
+            <p>
+            Roles
+            </p>
+            </a>
+          </li>
+
+          @php
+            if((Request::segment(2)=='activity-logs')){
+              $activeClass = 'active';
+            }
+            else{
+             $activeClass = '';
+            }
+          @endphp
+
+          <li class="nav-item has-treeview">
+            <a href="{{route('admin.activity-logs.index')}}" class="nav-link {{$activeClass}}">
+            <i class="nav-icon fas fa-history"></i>
+            <p>
+            Activity Logs
+            </p>
+            </a>
+          </li>
+
+          @php
+            if((Request::segment(2)=='chat-history')){
+              $activeClass = 'active';
+            }
+            else{
+             $activeClass = '';
+            }
+          @endphp
+
+          <li class="nav-item has-treeview">
+            <a href="{{route('admin.chat-history.index')}}" class="nav-link {{$activeClass}}">
+            <i class="nav-icon fas fa-comments"></i>
+            <p>
+            Chat History
+            </p>
+            </a>
+          </li>
+
+          @php
+            if((Request::segment(2)=='chatbots')){
+              $activeClass = 'active';
+            }
+            else{
+             $activeClass = '';
+            }
+          @endphp
+
+          <li class="nav-item has-treeview">
+            <a href="{{route('admin.chatbots.index')}}" class="nav-link {{$activeClass}}">
+            <i class="nav-icon fas fa-robot"></i>
+            <p>
+            Chatbots
+            </p>
+            </a>
+          </li>
 
         @php
           if((Request::segment(2)=='change-password')){

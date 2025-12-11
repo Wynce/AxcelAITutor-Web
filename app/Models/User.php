@@ -32,7 +32,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'email_verified_at',
         'login_type',
         'bot_id',
-        'is_first_login'
+        'is_first_login',
+        'last_active_at'
     ];
 
     /**
@@ -54,8 +55,51 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'last_active_at' => 'datetime',
             'password' => 'hashed',
+            'is_deleted' => 'boolean',
+            'is_first_login' => 'boolean',
         ];
+    }
+
+    /**
+     * Get chat history for this user
+     */
+    public function chatHistory()
+    {
+        return $this->hasMany(ChatHistory::class);
+    }
+
+    /**
+     * Get full name attribute
+     */
+    public function getFullNameAttribute()
+    {
+        return trim($this->first_name . ' ' . $this->last_name);
+    }
+
+    /**
+     * Scope for active users
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active')->where('is_deleted', false);
+    }
+
+    /**
+     * Scope for non-deleted users
+     */
+    public function scopeNotDeleted($query)
+    {
+        return $query->where('is_deleted', false);
+    }
+
+    /**
+     * Scope for filtering by status
+     */
+    public function scopeByStatus($query, $status)
+    {
+        return $query->where('status', $status);
     }
 
     public static function get_users_count(){

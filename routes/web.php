@@ -52,10 +52,54 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth:admin']], function () 
     Route::prefix('users')->group(function () {
         Route::get('/', [App\Http\Controllers\Admin\UsersController::class, 'index'])->name('adminUsers');
         Route::any('/getRecords', [App\Http\Controllers\Admin\UsersController::class, 'getRecords'])->name('adminUserGetRecords');
+        Route::get('/view/{id}', [App\Http\Controllers\Admin\UsersController::class, 'view'])->name('admin.users.view');
         Route::get('/edit/{id}', [App\Http\Controllers\Admin\UsersController::class, 'create'])->name('adminUserEdit');
         Route::post('/store', [App\Http\Controllers\Admin\UsersController::class, 'store'])->name('adminUserStore');
         Route::get('/delete/{id}', [App\Http\Controllers\Admin\UsersController::class, 'delete'])->name('adminUserDelete');
         Route::get('/changeStatus/{id}/{status}', [App\Http\Controllers\Admin\UsersController::class, 'changeStatus'])->name('adminUserChangeStatus');
+        Route::post('/bulk-action', [App\Http\Controllers\Admin\UsersController::class, 'bulkAction'])->name('admin.users.bulkAction');
+        Route::get('/export', [App\Http\Controllers\Admin\UsersController::class, 'export'])->name('admin.users.export');
         Route::get('/get-users', [App\Http\Controllers\Admin\UsersController::class, 'getUsers'])->name('adminGetUsers');
     });
+
+    // ✅ Admin Management Routes
+    Route::prefix('admins')->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\AdminsController::class, 'index'])->name('admin.admins.index');
+        Route::any('/getRecords', [App\Http\Controllers\Admin\AdminsController::class, 'getRecords'])->name('admin.admins.getRecords');
+        Route::get('/create', [App\Http\Controllers\Admin\AdminsController::class, 'create'])->name('admin.admins.create');
+        Route::get('/edit/{id}', [App\Http\Controllers\Admin\AdminsController::class, 'create'])->name('admin.admins.edit');
+        Route::post('/store', [App\Http\Controllers\Admin\AdminsController::class, 'store'])->name('admin.admins.store');
+        Route::get('/delete/{id}', [App\Http\Controllers\Admin\AdminsController::class, 'delete'])->name('admin.admins.delete');
+        Route::get('/changeStatus/{id}/{status}', [App\Http\Controllers\Admin\AdminsController::class, 'changeStatus'])->name('admin.admins.changeStatus');
+    });
+
+    // ✅ Roles Routes
+    Route::prefix('roles')->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\RolesController::class, 'index'])->name('admin.roles.index');
+        Route::get('/create', [App\Http\Controllers\Admin\RolesController::class, 'create'])->name('admin.roles.create');
+        Route::post('/store', [App\Http\Controllers\Admin\RolesController::class, 'store'])->name('admin.roles.store');
+        Route::get('/edit/{id}', [App\Http\Controllers\Admin\RolesController::class, 'edit'])->name('admin.roles.edit');
+        Route::post('/update/{id}', [App\Http\Controllers\Admin\RolesController::class, 'update'])->name('admin.roles.update');
+        Route::get('/delete/{id}', [App\Http\Controllers\Admin\RolesController::class, 'delete'])->name('admin.roles.delete');
+    });
+
+    // ✅ Activity Logs Routes
+    Route::get('/activity-logs', [App\Http\Controllers\Admin\ActivityLogController::class, 'index'])->name('admin.activity-logs.index');
+
+    // ✅ Chat History Routes
+    Route::get('/chat-history', [App\Http\Controllers\Admin\ChatHistoryController::class, 'index'])->name('admin.chat-history.index');
+    Route::get('/chat-history/{chatId}', [App\Http\Controllers\Admin\ChatHistoryController::class, 'show'])->name('admin.chat-history.show');
+
+    // ✅ Chatbots Routes
+    Route::prefix('chatbots')->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\ChatBotController::class, 'index'])->name('admin.chatbots.index');
+        Route::get('/create', [App\Http\Controllers\Admin\ChatBotController::class, 'create'])->name('admin.chatbots.create');
+        Route::post('/store', [App\Http\Controllers\Admin\ChatBotController::class, 'store'])->name('admin.chatbots.store');
+        Route::get('/edit/{id}', [App\Http\Controllers\Admin\ChatBotController::class, 'edit'])->name('admin.chatbots.edit');
+        Route::post('/update/{id}', [App\Http\Controllers\Admin\ChatBotController::class, 'update'])->name('admin.chatbots.update');
+        Route::get('/delete/{id}', [App\Http\Controllers\Admin\ChatBotController::class, 'delete'])->name('admin.chatbots.delete');
+    });
+
+    // ✅ Simulators Routes
+    Route::resource('simulators', App\Http\Controllers\Admin\SimulatorController::class)->names('admin.simulators');
 });

@@ -93,10 +93,11 @@ class AuthController extends Controller
 
             if ($res) {
                 $user = Auth::guard('admin')->user();
-                $current_user = $user->first_name." ".$user->last_name; 
+                $current_user = $user->name ?? ($user->first_name ?? '')." ".($user->last_name ?? ''); 
                 Session::put('current_user', $current_user);
-                $currentUser=array('role_id'=>$user->role_id,'name'=>$current_user,'upasana_Kendra_id'=>$user->upasana_Kendra_id);
-                session($currentUser);
+                
+                // Update last login
+                $user->updateLastLogin(request()->ip());
 
                 // clear login attempt
                // $this->clearLoginAttempts($request);
@@ -131,6 +132,14 @@ class AuthController extends Controller
         $currentMonth   = date('m');
 
         $data['userCount']     = User::get_users_count();
+
+        // Additional dashboard metrics
+        $data['activeUsers'] = User::where('is_deleted','!=',1)->where('status','active')->count();
+        $data['blockedUsers'] = User::where('is_deleted','!=',1)->where('status','blocked')->count();
+        $data['newUsers7d'] = User::where('is_deleted','!=',1)->whereDate('created_at','>=', now()->subDays(7))->count();
+        $data['chatsTotal'] = \App\Models\ChatHistory::where('is_deleted',0)->count();
+        $data['chats7d'] = \App\Models\ChatHistory::where('is_deleted',0)->whereDate('created_at','>=', now()->subDays(7))->count();
+
         return view('Admin/dashboard', $data);
     }
 

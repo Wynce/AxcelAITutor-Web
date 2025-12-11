@@ -2,15 +2,22 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class ChatHistory extends Model
 {
-    use HasFactory;
-    
-    protected $table = "user_chat_history";
+    protected $fillable = [
+        'user_id', 'bot_id', 'subject', 
+        'user_message', 'bot_response', 'tokens_used'
+    ];
 
-    protected $fillable = ['id','user_id', 'chat_id','user_message', 'response', 'created_at','updated_at','is_deleted','image_path','selected_bot_id'];
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
+    public function bot()
+    {
+        return $this->belongsTo(Bot::class);
+    }
 }
