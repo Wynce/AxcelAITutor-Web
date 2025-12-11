@@ -37,7 +37,7 @@ scratch. This page gets rid of all links and provides the needed markup only.
   <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
   <link rel="stylesheet" href="{{url('/')}}/assets/admin/css/sweetalert.css">
   <link rel="stylesheet" href="{{url('/')}}/assets/admin/css/jquery-confirm.min.css">
-  <link rel="stylesheet" href="{{url('/')}}/assets/admin/css/admin.js">
+  <link rel="stylesheet" href="{{url('/')}}/assets/admin/css/admin.css">
 
 <!-- Select2 CSS -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -103,7 +103,6 @@ scratch. This page gets rid of all links and provides the needed markup only.
     </div>
   </aside> -->
   <!-- /.control-sidebar -->
-   @yield('script')
    @include ('Admin.layout.footer')
 </div>
 <!-- ./wrapper -->
@@ -161,5 +160,6 @@ scratch. This page gets rid of all links and provides the needed markup only.
 <script src="{{url('/')}}/assets/adminlte/dist/js/demo.js"></script> -->
 <script src="{{url('/')}}/assets/admin/js/sweetalert.js"></script>
 <script src="{{url('/')}}/assets/admin/js/jquery-confirm.min.js"></script>
+@yield('script')
 </body>
 </html>

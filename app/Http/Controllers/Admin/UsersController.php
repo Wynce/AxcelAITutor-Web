@@ -1,16 +1,15 @@
 <?php
 
-
-
 namespace App\Http\Controllers\Admin;
 
 use Illuminate\Http\Request;
-
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Facades\Image;
 use App\Models\User;
 use App\Models\ChatHistory;
+use App\Models\UserAnalytics;
+use App\Models\Classroom;
 use App\Traits\LogsActivity;
 use Auth;
 use Session;
@@ -27,60 +26,49 @@ class UsersController extends Controller
     function __construct() {
     }
 
-
-
     /**
-
-     * Show list of records for products.
-
-     * @return [array] [record array]
-
+     * Show list of records for users.
      */
-
     public function index() {
-
         $data = [];
-
-        $data['pageTitle']              = "Users";
-
-        $data['current_module_name']    = "Users";
-
-        $data['module_name']            = "Users";
-
-        $data['module_url']             = route('adminUsers');
-
-        $data['recordsTotal']           = 0;
-
-        $data['currentModule']          = '';
+        $data['pageTitle'] = "Users";
+        $data['current_module_name'] = "Users";
+        $data['module_name'] = "Users";
+        $data['module_url'] = route('adminUsers');
+        $data['recordsTotal'] = 0;
+        $data['currentModule'] = '';
+        
+        // Stats by user type
+        $data['totalUsers'] = User::where('is_deleted', '!=', 1)->count();
+        $data['totalStudents'] = User::where('is_deleted', '!=', 1)->where('user_type', 'student')->count();
+        $data['totalParents'] = User::where('is_deleted', '!=', 1)->where('user_type', 'parent')->count();
+        $data['totalTeachers'] = User::where('is_deleted', '!=', 1)->where('user_type', 'teacher')->count();
 
         return view('Admin/Users/index', $data);
-
     }
 
-
-
     /**
-
-     * [getRecords for product list.This is a ajax function for dynamic datatables list]
-
-     * @param  Request $request [sent filters if applied any]
-
-     * @return [JSON]           [users list in json format]
-
+     * Get records for DataTables
      */
-
     public function getRecords(Request $request) {
-        $usersDetails = User::select('users.*')->where('users.is_deleted','!=',1);
+        $usersDetails = User::select('users.*')->where('users.is_deleted', '!=', 1);
         
-        // Advanced filtering
+        // Filter by user type
+        if (!empty($request->input('user_type'))) {
+            $usersDetails = $usersDetails->where('users.user_type', $request->input('user_type'));
+        }
+
+        // Filter by status
         if (!empty($request->input('status'))) {
             $usersDetails = $usersDetails->where('users.status', $request->input('status'));
         }
 
+        // Filter by country
         if (!empty($request->input('country'))) {
             $usersDetails = $usersDetails->where('users.country', 'like', '%' . $request->input('country') . '%');
         }
 
+        // Filter by date range
         if (!empty($request->input('date_from'))) {
             $usersDetails = $usersDetails->whereDate('users.created_at', '>=', $request->input('date_from'));
         }
@@ -89,391 +77,372 @@ class UsersController extends Controller
             $usersDetails = $usersDetails->whereDate('users.created_at', '<=', $request->input('date_to'));
         }
         
-        if(!empty($request['search']['value'])) {
-            $field = ['users.first_name','users.last_name','users.email','users.country'];
-            $namefield = ['users.first_name','users.last_name','users.email','users.country'];
+        // Search
+        if (!empty($request['search']['value'])) {
+            $field = ['users.first_name', 'users.last_name', 'users.email', 'users.country', 'users.school_name'];
+            $namefield = ['users.first_name', 'users.last_name', 'users.email', 'users.country'];
             $search = $request['search']['value'];
 
-            $usersDetails = $usersDetails->Where(function ($query) use($search, $field,$namefield) {
-                if (strpos($search, ' ') !== false){
-                    $s = explode(' ',$search);
-                    foreach($s as $val) {
-                        for ($i = 0; $i < count($namefield); $i++){
-                            $query->orwhere($namefield[$i], 'like',  '%' . $val .'%');
+            $usersDetails = $usersDetails->where(function ($query) use ($search, $field, $namefield) {
+                if (strpos($search, ' ') !== false) {
+                    $s = explode(' ', $search);
+                    foreach ($s as $val) {
+                        for ($i = 0; $i < count($namefield); $i++) {
+                            $query->orwhere($namefield[$i], 'like', '%' . $val . '%');
                         }
                     }
                 } else {
-                    for ($i = 0; $i < count($field); $i++){
-                        $query->orwhere($field[$i], 'like',  '%' . $search .'%');
+                    for ($i = 0; $i < count($field); $i++) {
+                        $query->orwhere($field[$i], 'like', '%' . $search . '%');
                     }
                 }
             });
         }
 
-        /*if(isset($request['order'][0])){
-            $postedorder=$request['order'][0];
-            if($postedorder['column']==0) $orderby='users.id';
-            if($postedorder['column']==1) $orderby='users.name';
-            if($postedorder['column']==2) $orderby='users.email';
-            if($postedorder['column']==3) $orderby='users.phone_number'; 
-            if($postedorder['column']==4) $orderby='users.location';
-            $orderorder=$postedorder['dir'];
-            $usersDetails = $usersDetails->orderby($orderby, $orderorder);
-        }
-        */
-
-        if(isset($request['order'][0])){
+        // Ordering
+        if (isset($request['order'][0])) {
             $postedorder = $request['order'][0];
-            // Column mapping after adding checkbox and image columns
-            // 0: checkbox, 1: image, 2: fullname (first_name), 3: email, 4: birth_year, 5: country
             switch ($postedorder['column']) {
-                case 2:
-                    $orderby = 'users.first_name';
-                    break;
-                case 3:
-                    $orderby = 'users.email';
-                    break;
-                case 4:
-                    $orderby = 'users.birth_year';
-                    break;
-                case 5:
-                    $orderby = 'users.country';
-                    break;
-                default:
-                    $orderby = 'users.id';
+                case 2: $orderby = 'users.first_name'; break;
+                case 3: $orderby = 'users.email'; break;
+                case 4: $orderby = 'users.user_type'; break;
+                case 5: $orderby = 'users.country'; break;
+                default: $orderby = 'users.id';
             }
-            
             $orderorder = $postedorder['dir'] ?? 'desc';
             $usersDetails = $usersDetails->orderBy($orderby, $orderorder);
         } else {
-            // Default sorting when no specific column is selected
             $usersDetails = $usersDetails->orderBy('users.id', 'desc');
         }
-
 
         $recordsTotal = $usersDetails->count();
         $recordDetails = $usersDetails->offset($request->input('start'))->limit($request->input('length'))->get();
 
         $arr = [];
         if (count($recordDetails) > 0) {
-
             $recordDetails = $recordDetails->toArray();
             $i = 0;
             foreach ($recordDetails as $recordDetailsKey => $recordDetailsVal) {
-
                 $action = $status = $image = '-';
 
                 $id = (!empty($recordDetailsVal['id'])) ? $recordDetailsVal['id'] : '-';
-                if(!empty($recordDetailsVal['image'])) {
-                    $image  = asset('assets/'.$recordDetailsVal['image']);
-                }
-                else{
-                    $image  = asset('assets/profile_images/default/no-image.png');
-                }
-
-                $image  =   '<img src="'.$image.'" width="70" height="70">';
-
-                // $username = (!empty($recordDetailsVal['username'])) ? mb_convert_encoding($recordDetailsVal['username'], 'UTF-8', 'auto')  : '-';
-                $fullname = (!empty($recordDetailsVal['first_name'])) ? $recordDetailsVal['first_name']." ".@$recordDetailsVal['last_name']  : '-';
-
-                $email = (!empty($recordDetailsVal['email'])) ? $recordDetailsVal['email']  : '-';
-                $country   = (!empty($recordDetailsVal['country'])) ? $recordDetailsVal['country'] : '-';
-                $birth_year   = (!empty($recordDetailsVal['birth_year'])) ? $recordDetailsVal['birth_year'] : '-';
-               
-                 if ($recordDetailsVal['status'] == 'active') {
-                    $status = '<a href="javascript:void(0)" onclick=" return ConfirmStatusFunction(\''.route('adminUserChangeStatus', [base64_encode($recordDetailsVal['id']), 'blocked']).'\');" class="btn btn-icon btn-success" title="Block"><i class="fa fa-unlock"></i> </a>';
+                if (!empty($recordDetailsVal['image'])) {
+                    $image = asset('assets/' . $recordDetailsVal['image']);
                 } else {
-                    $status = '<a href="javascript:void(0)" onclick=" return ConfirmStatusFunction(\''.route('adminUserChangeStatus', [base64_encode($recordDetailsVal['id']), 'active']).'\');" class="btn btn-icon btn-danger" title="Active"><i class="fa fa-lock"></i> </a>';
+                    $image = asset('assets/profile_images/default/no-image.png');
                 }
-               /* $action = '<a href="'.route('adminUserEdit', base64_encode($id)).'" title="Edit" class="btn btn-icon btn-success"><i class="fas fa-edit"></i> </a>&nbsp;&nbsp;';*/
-                $action .= '<a href="'.route('admin.users.view', base64_encode($id)).'" title="View" class="btn btn-icon btn-info"><i class="fas fa-eye"></i></a> ';
-                $action .= '<a href="javascript:void(0)" onclick=" return ConfirmDeleteFunction(\''.route('adminUserDelete', base64_encode($id)).'\');"  title="Delete" class="btn btn-icon btn-danger"><i class="fas fa-trash"></i></a>';
- 
+
+                $image = '<img src="' . $image . '" width="50" height="50" class="rounded-circle">';
+
+                $fullname = (!empty($recordDetailsVal['first_name'])) ? $recordDetailsVal['first_name'] . " " . @$recordDetailsVal['last_name'] : '-';
+
+                $email = (!empty($recordDetailsVal['email'])) ? $recordDetailsVal['email'] : '-';
+                $country = (!empty($recordDetailsVal['country'])) ? $recordDetailsVal['country'] : '-';
+
+                // User type badge
+                $userType = $recordDetailsVal['user_type'] ?? 'student';
+                $typeBadge = match($userType) {
+                    'student' => '<span class="badge badge-primary">Student</span>',
+                    'parent' => '<span class="badge badge-success">Parent</span>',
+                    'teacher' => '<span class="badge badge-info">Teacher</span>',
+                    default => '<span class="badge badge-secondary">-</span>',
+                };
+
+                if ($recordDetailsVal['status'] == 'active') {
+                    $status = '<a href="javascript:void(0)" onclick=" return ConfirmStatusFunction(\'' . route('adminUserChangeStatus', [base64_encode($recordDetailsVal['id']), 'blocked']) . '\');" class="btn btn-icon btn-success" title="Block"><i class="fa fa-unlock"></i> </a>';
+                } else {
+                    $status = '<a href="javascript:void(0)" onclick=" return ConfirmStatusFunction(\'' . route('adminUserChangeStatus', [base64_encode($recordDetailsVal['id']), 'active']) . '\');" class="btn btn-icon btn-danger" title="Active"><i class="fa fa-lock"></i> </a>';
+                }
+
+                $action = '<a href="' . route('admin.users.view', base64_encode($id)) . '" title="View" class="btn btn-icon btn-info"><i class="fas fa-eye"></i></a> ';
+                $action .= '<a href="' . route('adminUserEdit', base64_encode($id)) . '" title="Edit" class="btn btn-icon btn-warning"><i class="fas fa-edit"></i></a> ';
+                $action .= '<a href="javascript:void(0)" onclick=" return ConfirmDeleteFunction(\'' . route('adminUserDelete', base64_encode($id)) . '\');"  title="Delete" class="btn btn-icon btn-danger"><i class="fas fa-trash"></i></a>';
+
                 $i++;
 
                 // Get chat count
                 $chatCount = ChatHistory::where('user_id', $id)->where('is_deleted', 0)->count();
-                $lastActive = !empty($recordDetailsVal['last_active_at']) ? Carbon::parse($recordDetailsVal['last_active_at'])->format('Y-m-d H:i') : 'Never';
 
-                $checkbox = '<input type="checkbox" class="user-checkbox" value="'.base64_encode($id).'">';
+                $checkbox = '<input type="checkbox" class="user-checkbox" value="' . base64_encode($id) . '">';
 
-                $arr[] = [ $checkbox, $image , $fullname, $email, $birth_year , $country, $chatCount, $lastActive, $status, $action];
-
+                $arr[] = [$checkbox, $image, $fullname, $email, $typeBadge, $country, $chatCount, $status, $action];
             }
-
-        }
-        else {
-            $arr[] = ['','','', "No record found" ,'' ,'', '', '', '', ''];
+        } else {
+            $arr[] = ['', '', '', 'No record found', '', '', '', '', ''];
         }
 
         $json_arr = [
-            'draw'            => $request->input('draw'),
-            'recordsTotal'    => $recordsTotal,
+            'draw' => $request->input('draw'),
+            'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsTotal,
-            'data'            => ($arr),
+            'data' => ($arr),
         ];
 
         return json_encode($json_arr);
     }
 
-
-       /* function to open user create add/edit form */
+    /**
+     * Create/Edit user form
+     */
     public function create(Request $request) {
-      
-        $id         = $request->id;
-  
-        $data['module_url']     = route('adminUsers');
+        $id = $request->id;
+        $data['module_url'] = route('adminUsers');
+        $data['userTypes'] = User::TYPES;
+        $data['availableParents'] = User::where('is_deleted', '!=', 1)->where('user_type', 'parent')->get();
+        $data['availableTeachers'] = User::where('is_deleted', '!=', 1)->where('user_type', 'teacher')->get();
        
-        if($id !=''){
+        if ($id != '') {
             $data['id'] = $id;
             $id = base64_decode($id);
             $data['userDetails'] = User::where('id', $id)->first();
-            $user_label = trans('admin.edit_users');
-            $data['pageTitle']              = $user_label;
-            $data['current_module_name']    = $user_label;
-            $data['module_name']            = $user_label;
+            $user_label = "Edit User";
+            $data['pageTitle'] = $user_label;
+            $data['current_module_name'] = $user_label;
+            $data['module_name'] = $user_label;
 
-            $data['upasana_kendra'] = DB::table('upasana_kendra')
-                   ->where('is_deleted','!=',1)
-                   ->where('status','=','active')
-                   ->get();
 
+            $data["availableParents"] = User::where("is_deleted", "!=", 1)->where("user_type", "parent")->get();
+            $data["availableTeachers"] = User::where("is_deleted", "!=", 1)->where("user_type", "teacher")->get();
             return view("Admin/Users/edit", $data);
-        }else{
-            
-            $user_label = trans('admin.add_users');
-            $data['pageTitle']              = $user_label;
-            $data['current_module_name']    = $user_label;
-            $data['module_name']            = $user_label;
+        } else {
+            $user_label = "Add User";
+            $data['pageTitle'] = $user_label;
+            $data['current_module_name'] = $user_label;
+            $data['module_name'] = $user_label;
             return view("Admin/Users/create", $data);
-        }     
+        }
     }
-    
 
-    /*function to save/update users details*/
+    /**
+     * Store/Update user
+     */
     public function store(Request $request) {
-
-        $id =trim(base64_decode($request->input('id')));
+        $id = trim(base64_decode($request->input('id')));
         $role_id = $request->input('role_id');
+
         $rules = [
-        'name'  => 'required',
-        'phone_number' => 'required',
-        'location' => 'required',    
-        'latitude'    =>  'required',
-        'longitude'   =>  'required',
-        'upasana_kendra' => 'required',
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'nullable|string|max:255',
+            'user_type' => 'nullable|in:student,parent,teacher',
+            'country' => 'nullable|string|max:255',
+            'birth_year' => 'nullable|integer|min:1900|max:' . date('Y'),
+            'school_name' => 'nullable|string|max:255',
+            'grade_level' => 'nullable|string|max:50',
         ];
 
-        if($request->input('id')!='') {
-            $rules['email']         = 'required|regex:/(.*)\.([a-zA-z]+)/i|unique:users,email,'.$id;
-        }
-        else{
-           $rules['email']        = "required|email|unique:users,email,NULL,id,is_deleted,0";
+        if ($request->input('id') != '') {
+            $rules['email'] = 'required|regex:/(.*)\.([a-zA-z]+)/i|unique:users,email,' . $id;
+        } else {
+            $rules['email'] = "required|email|unique:users,email,NULL,id,is_deleted,0";
         }
 
         $messages = [
-            'name.required'            => trans('admin.enter_fullname'),
-            'phone_number.required'        => trans('admin.fill_in_phone_no_err'),
-            'email.unique'                 => trans('admin.email_already_exist_err'),
-            'email.email'                  => trans('admin.fill_in_valid_email_err'),
-            'email.required'               => trans('admin.fill_in_email_err'),
-            'location.required'            => trans('admin.enter_address'),
-            'latitude.required'            => "Please select your location",
-            'longitude.required'           => "Please select your location",
-            'upasana_kendra.required'      => "Please select upasana kendra",
+            'first_name.required' => "Please enter first name",
+            'email.unique' => "Email already exists",
+            'email.email' => "Please enter a valid email",
+            'email.required' => "Please enter email",
         ];
 
-        $validator = validator::make($request->all(), $rules, $messages);
-        if($validator->fails()) {
-            $messages = $validator->messages(); //p($messages);
+        $validator = Validator::make($request->all(), $rules, $messages);
+        if ($validator->fails()) {
+            $messages = $validator->messages();
             return redirect()->back()->withInput($request->all())->withErrors($messages);
         }
 
-
         $created_at = date('Y-m-d H:i:s');
-        //$password = Str::random(8);//Hash::make(str_random(8));
 
-     
         $fileName = '';
         $buyerDetails = User::find($id);
-         
-        if($request->hasfile('profile'))
-            {
-                $image = $request->file('profile');
-              
-                if(!empty($buyerDetails->profile)){
-                    $image_path = storage_path().'/app/public/uploads/User/'.$buyerDetails->profile; 
-                    $resized_image_path = storage_path().'/app/public/uploads/User/'.$buyerDetails->profile; 
-                   
-                    if (File::exists($image_path)) {
-                        unlink($image_path);
-                    }
 
-                    if (File::exists($resized_image_path)) {
-                        unlink($resized_image_path);
-                    }
+        if ($request->hasfile('profile')) {
+            $image = $request->file('profile');
+
+            if (!empty($buyerDetails->profile)) {
+                $image_path = storage_path() . '/app/public/uploads/User/' . $buyerDetails->profile;
+                $resized_image_path = storage_path() . '/app/public/uploads/User/' . $buyerDetails->profile;
+
+                if (File::exists($image_path)) {
+                    unlink($image_path);
                 }
 
-                $fileError = 0;
-                $image = $request->file('profile');
-                $name=$image->getClientOriginalName();
-                $fileExt  = strtolower($image->getClientOriginalExtension());
-                if(in_array($fileExt, ['jpg', 'jpeg', 'png','webp'])) {
-                    $fileName = 'Buyer_'.date('YmdHis').'.'.$fileExt;
-                  
-                    Storage::disk('public')->put('uploads/User/' . $fileName, File::get($image));
-
-                    $path = storage_path().'/app/public/uploads/User/'.$fileName; 
-                    $mime = getimagesize($path);
-
-                    if($mime['mime']=='image/png'){ $src_img = imagecreatefrompng($path); }
-                    if($mime['mime']=='image/jpg'){ $src_img = imagecreatefromjpeg($path); }
-                    if($mime['mime']=='image/jpeg'){ $src_img = imagecreatefromjpeg($path); }
-                    if($mime['mime']=='image/pjpeg'){ $src_img = imagecreatefromjpeg($path); }
-
-
-                    if ($mime['mime'] == 'image/webp') {
-                        $image = Image::make($path);
-                        $src_img = $image->getCore();
-                    }
-
-                    $old_x = imageSX($src_img);
-                    $old_y = imageSY($src_img);
-
-                    $newWidth = 300;
-                    $newHeight = 300;
-
-                    if($old_x > $old_y){
-                        $thumb_w    =   $newWidth;
-                        $thumb_h    =   $old_y/$old_x*$newWidth;
-                    }
-
-                    if($old_x < $old_y){
-                        $thumb_w    =   $old_x/$old_y*$newHeight;
-                        $thumb_h    =   $newHeight;
-                    }
-
-                    if($old_x == $old_y){
-                        $thumb_w    =   $newWidth;
-                        $thumb_h    =   $newHeight;
-                    }
-
-                    $dst_img        =   ImageCreateTrueColor($thumb_w,$thumb_h);
-                    imagecopyresampled($dst_img,$src_img,0,0,0,0,$thumb_w,$thumb_h,$old_x,$old_y);
-
-                    // New save location
-                    $new_thumb_loc = storage_path().'/app/public/uploads/User/resized/'.$fileName; 
-                    if($mime['mime']=='image/png'){ $result = imagepng($dst_img,$new_thumb_loc,8); }
-                    if($mime['mime']=='image/jpg'){ $result = imagejpeg($dst_img,$new_thumb_loc,80); }
-                    if($mime['mime']=='image/jpeg'){ $result = imagejpeg($dst_img,$new_thumb_loc,80); }
-                    if($mime['mime']=='image/pjpeg'){ $result = imagejpeg($dst_img,$new_thumb_loc,80); }
-
-
-                    if ($mime['mime'] == 'image/webp') {
-                         $result = imagejpeg($dst_img,$new_thumb_loc,80);
-                    }
-
-                    imagedestroy($dst_img);
-                    imagedestroy($src_img);
-
-                     /*resized for product details page small image*/
-                        $mime = getimagesize($path);
-            
-                        if($mime['mime']=='image/png'){ $src_img = imagecreatefrompng($path); }
-                        if($mime['mime']=='image/jpg'){ $src_img = imagecreatefromjpeg($path); }
-                        if($mime['mime']=='image/jpeg'){ $src_img = imagecreatefromjpeg($path); }
-                        if($mime['mime']=='image/pjpeg'){ $src_img = imagecreatefromjpeg($path); }
-                        
-                        if ($mime['mime'] == 'image/webp') {
-                            $image = Image::make($path);
-                            $src_img = $image->getCore();
-                        }
-
-                        $old_x = imageSX($src_img);
-                        $old_y = imageSY($src_img);
-    
-                        $newWidth = 70;
-                        $newHeight = 70;
-    
-                        if($old_x > $old_y) {
-                            $thumb_w    =   $newWidth;
-                            $thumb_h    =   $old_y/$old_x*$newWidth;
-                        }
-    
-                        if($old_x < $old_y) {
-                            $thumb_w    =   $old_x/$old_y*$newHeight;
-                            $thumb_h    =   $newHeight;
-                        }
-    
-                        if($old_x == $old_y) {
-                            $thumb_w    =   $newWidth;
-                            $thumb_h    =   $newHeight;
-                        }
-    
-                        $dst_img        =   ImageCreateTrueColor($thumb_w,$thumb_h);
-                        imagecopyresampled($dst_img,$src_img,0,0,0,0,$thumb_w,$thumb_h,$old_x,$old_y);
-    
-                        // New save location
-                        $new_thumb_loc = storage_path().'/app/public/uploads/User/userIcons/'.$fileName;
-    
-                        if($mime['mime']=='image/png'){ $result = imagepng($dst_img,$new_thumb_loc,8); }
-                        if($mime['mime']=='image/jpg'){ $result = imagejpeg($dst_img,$new_thumb_loc,80); }
-                        if($mime['mime']=='image/jpeg'){ $result = imagejpeg($dst_img,$new_thumb_loc,80); }
-                        if($mime['mime']=='image/pjpeg'){ $result = imagejpeg($dst_img,$new_thumb_loc,80); }
-                        
-                        if ($mime['mime'] == 'image/webp') {
-                            $result = imagejpeg($dst_img,$new_thumb_loc,80);
-                        }
-
-                        imagedestroy($dst_img);
-                        imagedestroy($src_img);        
-                }
-                else {
-                    $fileError = 1;
-                }
-
-                if($fileError == 1)
-                {
-                    Session::flash('error', trans('admin.file_not_valid_err'));
-                    return redirect()->back();
-                }
-            } else{
-                if(!empty($buyerDetails->profile)){
-                    $fileName = $buyerDetails->profile;
+                if (File::exists($resized_image_path)) {
+                    unlink($resized_image_path);
                 }
             }
-        $arrUserInsert = [
-            'name'          => trim($request->input('name')),
-            'phone_number'      => trim($request->input('phone_number')),
-            'location' => trim($request->input('location')),
-            'email'             => trim($request->input('email')), 
-            'profile'      => $fileName,
-            'latitude'  => number_format(trim($request->input('latitude')), 4, '.', ''),
-            'longitude' => number_format(trim($request->input('longitude')), 4, '.', ''),
-            'upasana_kendra_id' => trim($request->input('upasana_kendra')),
-        ];
-;
-        if($id != ''){
-           User::where('id','=',$id)->update($arrUserInsert);
-        }else{
-           $id = User::create($arrUserInsert)->id;     
+
+            $fileError = 0;
+            $image = $request->file('profile');
+            $name = $image->getClientOriginalName();
+            $fileExt = strtolower($image->getClientOriginalExtension());
+            if (in_array($fileExt, ['jpg', 'jpeg', 'png', 'webp'])) {
+                $fileName = 'Buyer_' . date('YmdHis') . '.' . $fileExt;
+
+                Storage::disk('public')->put('uploads/User/' . $fileName, File::get($image));
+
+                $path = storage_path() . '/app/public/uploads/User/' . $fileName;
+                $mime = getimagesize($path);
+
+                if ($mime['mime'] == 'image/png') { $src_img = imagecreatefrompng($path); }
+                if ($mime['mime'] == 'image/jpg') { $src_img = imagecreatefromjpeg($path); }
+                if ($mime['mime'] == 'image/jpeg') { $src_img = imagecreatefromjpeg($path); }
+                if ($mime['mime'] == 'image/pjpeg') { $src_img = imagecreatefromjpeg($path); }
+
+                if ($mime['mime'] == 'image/webp') {
+                    $image = Image::make($path);
+                    $src_img = $image->getCore();
+                }
+
+                $old_x = imageSX($src_img);
+                $old_y = imageSY($src_img);
+
+                $newWidth = 300;
+                $newHeight = 300;
+
+                if ($old_x > $old_y) {
+                    $thumb_w = $newWidth;
+                    $thumb_h = $old_y / $old_x * $newWidth;
+                }
+
+                if ($old_x < $old_y) {
+                    $thumb_w = $old_x / $old_y * $newHeight;
+                    $thumb_h = $newHeight;
+                }
+
+                if ($old_x == $old_y) {
+                    $thumb_w = $newWidth;
+                    $thumb_h = $newHeight;
+                }
+
+                $dst_img = ImageCreateTrueColor($thumb_w, $thumb_h);
+                imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $thumb_w, $thumb_h, $old_x, $old_y);
+
+                // New save location
+                $new_thumb_loc = storage_path() . '/app/public/uploads/User/resized/' . $fileName;
+                if ($mime['mime'] == 'image/png') { $result = imagepng($dst_img, $new_thumb_loc, 8); }
+                if ($mime['mime'] == 'image/jpg') { $result = imagejpeg($dst_img, $new_thumb_loc, 80); }
+                if ($mime['mime'] == 'image/jpeg') { $result = imagejpeg($dst_img, $new_thumb_loc, 80); }
+                if ($mime['mime'] == 'image/pjpeg') { $result = imagejpeg($dst_img, $new_thumb_loc, 80); }
+
+                if ($mime['mime'] == 'image/webp') {
+                    $result = imagejpeg($dst_img, $new_thumb_loc, 80);
+                }
+
+                imagedestroy($dst_img);
+                imagedestroy($src_img);
+
+                /*resized for product details page small image*/
+                $mime = getimagesize($path);
+
+                if ($mime['mime'] == 'image/png') { $src_img = imagecreatefrompng($path); }
+                if ($mime['mime'] == 'image/jpg') { $src_img = imagecreatefromjpeg($path); }
+                if ($mime['mime'] == 'image/jpeg') { $src_img = imagecreatefromjpeg($path); }
+                if ($mime['mime'] == 'image/pjpeg') { $src_img = imagecreatefromjpeg($path); }
+
+                if ($mime['mime'] == 'image/webp') {
+                    $image = Image::make($path);
+                    $src_img = $image->getCore();
+                }
+
+                $old_x = imageSX($src_img);
+                $old_y = imageSY($src_img);
+
+                $newWidth = 70;
+                $newHeight = 70;
+
+                if ($old_x > $old_y) {
+                    $thumb_w = $newWidth;
+                    $thumb_h = $old_y / $old_x * $newWidth;
+                }
+
+                if ($old_x < $old_y) {
+                    $thumb_w = $old_x / $old_y * $newHeight;
+                    $thumb_h = $newHeight;
+                }
+
+                if ($old_x == $old_y) {
+                    $thumb_w = $newWidth;
+                    $thumb_h = $newHeight;
+                }
+
+                $dst_img = ImageCreateTrueColor($thumb_w, $thumb_h);
+                imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $thumb_w, $thumb_h, $old_x, $old_y);
+
+                // New save location
+                $new_thumb_loc = storage_path() . '/app/public/uploads/User/userIcons/' . $fileName;
+
+                if ($mime['mime'] == 'image/png') { $result = imagepng($dst_img, $new_thumb_loc, 8); }
+                if ($mime['mime'] == 'image/jpg') { $result = imagejpeg($dst_img, $new_thumb_loc, 80); }
+                if ($mime['mime'] == 'image/jpeg') { $result = imagejpeg($dst_img, $new_thumb_loc, 80); }
+                if ($mime['mime'] == 'image/pjpeg') { $result = imagejpeg($dst_img, $new_thumb_loc, 80); }
+
+                if ($mime['mime'] == 'image/webp') {
+                    $result = imagejpeg($dst_img, $new_thumb_loc, 80);
+                }
+
+                imagedestroy($dst_img);
+                imagedestroy($src_img);
+            } else {
+                $fileError = 1;
+            }
+
+            if ($fileError == 1) {
+                Session::flash('error', "File type not valid");
+                return redirect()->back();
+            }
+        } else {
+            if (!empty($buyerDetails->profile)) {
+                $fileName = $buyerDetails->profile;
+            }
         }
-       
+
+        $arrUserInsert = [
+            'first_name' => trim($request->input('first_name')),
+            'last_name' => trim($request->input('last_name')),
+            'email' => trim($request->input('email')),
+            'user_type' => $request->input('user_type', 'student'),
+            'country' => trim($request->input('country')),
+            'birth_year' => $request->input('birth_year'),
+            'school_name' => trim($request->input('school_name')),
+            'grade_level' => trim($request->input('grade_level')),
+            'status' => $request->input('status', 'active'),
+        ];
+
+        if ($fileName) {
+            $arrUserInsert['profile'] = $fileName;
+        }
+
+        // Handle parent assignment for students
+        if ($request->input('user_type') === 'student' && $request->has('parent_id')) {
+            $arrUserInsert['parent_id'] = $request->input('parent_id') ?: null;
+        }
+
+        // Handle subjects for teachers
+        if ($request->input('user_type') === 'teacher' && $request->input('subjects_teaching')) {
+            $subjects = $request->input('subjects_teaching');
+            $arrUserInsert['subjects_teaching'] = is_array($subjects) ? implode(',', $subjects) : $subjects;
+        }
+
+        if ($id != '') {
+            User::where('id', '=', $id)->update($arrUserInsert);
+        } else {
+            if ($request->input('password')) {
+                $arrUserInsert['password'] = bcrypt($request->input('password'));
+            }
+            $id = User::create($arrUserInsert)->id;
+        }
+
         Session::flash('success', "Record saved successfully.");
-        return redirect(route('adminUsers',base64_encode($role_id)));
+        return redirect(route('adminUsers'));
     }
 
-      /**
-    * Delete Record
-    * @param  $id = Id
-    */
     /**
      * View user details
      */
     public function view($id)
     {
         $id = base64_decode($id);
-        $user = User::with('chatHistory')->findOrFail($id);
+        $user = User::with(['chatHistory', 'parent', 'children', 'teachers', 'students', 'classrooms', 'ownedClassrooms'])
+            ->findOrFail($id);
 
         $data = [];
         $data['pageTitle'] = "User Details";
@@ -488,6 +457,24 @@ class UsersController extends Controller
             ->limit(10)
             ->get();
 
+        // Analytics
+        $data['analytics'] = $user->getAnalyticsSummary(30);
+        $data['weeklyAnalytics'] = UserAnalytics::where('user_id', $id)
+            ->where('date', '>=', now()->subDays(7))
+            ->orderBy('date')
+            ->get();
+
+        // Related users based on type
+        if ($user->isStudent()) {
+            $data['availableParents'] = User::where('is_deleted', '!=', 1)->where('user_type', 'parent')->get();
+            $data['availableTeachers'] = User::where('is_deleted', '!=', 1)->where('user_type', 'teacher')->get();
+            $data['availableClassrooms'] = Classroom::where('status', 'active')->get();
+        } elseif ($user->isParent()) {
+            $data['availableStudents'] = User::where('is_deleted', '!=', 1)->where('user_type', 'student')->whereNull('parent_id')->get();
+        } elseif ($user->isTeacher()) {
+            $data['availableStudents'] = User::where('is_deleted', '!=', 1)->where('user_type', 'student')->get();
+        }
+
         return view('Admin/Users/view', $data);
     }
 
@@ -495,45 +482,41 @@ class UsersController extends Controller
      * Delete user
      */
     public function delete($id) {
-        if(empty($id)) {
-            Session::flash('error', "Opps.! Something went wrong, please try again.");
+        if (empty($id)) {
+            Session::flash('error', "Oops! Something went wrong, please try again.");
             return redirect(route('adminUsers'));
         }
 
         $id = base64_decode($id);
         $user = User::find($id);
 
-        if (!empty($user)){
+        if (!empty($user)) {
             $oldData = $user->toArray();
             $user->update(['is_deleted' => 1]);
             $this->logDeleted($user, 'User deleted');
             Session::flash('success', "Record deleted successfully.");
             return redirect()->back();
         } else {
-            Session::flash('error', "Opps.! Something went wrong, please try again.");
+            Session::flash('error', "Oops! Something went wrong, please try again.");
             return redirect()->back();
         }
     }
 
-      /**
-     * Change status for Record [active/block].
-     * @param  $id = Id, $status = active/block 
-     */
     /**
      * Change user status
      */
     public function changeStatus($id, $status) {
-        if(empty($id)) {
-            Session::flash('error', "Opps.! Something went wrong, please try again.");
+        if (empty($id)) {
+            Session::flash('error', "Oops! Something went wrong, please try again.");
             return redirect(route('adminUsers'));
         }
         $id = base64_decode($id);
         $user = User::findOrFail($id);
         $oldStatus = $user->status;
-        
+
         $user->update(['status' => $status]);
         $this->logStatusChange($user, $oldStatus, $status, 'User status changed');
-        
+
         Session::flash('success', "Status updated successfully.");
         return redirect()->back();
     }
@@ -550,7 +533,7 @@ class UsersController extends Controller
             return response()->json(['success' => false, 'message' => 'No users selected']);
         }
 
-        $ids = array_map(function($id) {
+        $ids = array_map(function ($id) {
             return base64_decode($id);
         }, $userIds);
 
@@ -560,17 +543,17 @@ class UsersController extends Controller
                     User::whereIn('id', $ids)->update(['is_deleted' => 1]);
                     $this->logActivity('bulk_delete', null, 'Bulk deleted ' . count($ids) . ' users');
                     return response()->json(['success' => true, 'message' => count($ids) . ' users deleted successfully']);
-                
+
                 case 'activate':
                     User::whereIn('id', $ids)->update(['status' => 'active']);
                     $this->logActivity('bulk_activate', null, 'Bulk activated ' . count($ids) . ' users');
                     return response()->json(['success' => true, 'message' => count($ids) . ' users activated successfully']);
-                
+
                 case 'deactivate':
                     User::whereIn('id', $ids)->update(['status' => 'inactive']);
                     $this->logActivity('bulk_deactivate', null, 'Bulk deactivated ' . count($ids) . ' users');
                     return response()->json(['success' => true, 'message' => count($ids) . ' users deactivated successfully']);
-                
+
                 default:
                     return response()->json(['success' => false, 'message' => 'Invalid action']);
             }
@@ -586,9 +569,11 @@ class UsersController extends Controller
     {
         $users = User::where('is_deleted', '!=', 1);
 
-        // Apply filters
         if ($request->input('status')) {
             $users = $users->where('status', $request->input('status'));
+        }
+        if ($request->input('user_type')) {
+            $users = $users->where('user_type', $request->input('user_type'));
         }
         if ($request->input('country')) {
             $users = $users->where('country', 'like', '%' . $request->input('country') . '%');
@@ -608,11 +593,11 @@ class UsersController extends Controller
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $callback = function() use ($users) {
+        $callback = function () use ($users) {
             $file = fopen('php://output', 'w');
-            
+
             // Add CSV headers
-            fputcsv($file, ['ID', 'Name', 'Email', 'Country', 'Birth Year', 'Status', 'Created At', 'Last Active']);
+            fputcsv($file, ['ID', 'Name', 'Email', 'Type', 'Country', 'School', 'Grade', 'Birth Year', 'Status', 'Created At', 'Last Active']);
 
             // Add data rows
             foreach ($users as $user) {
@@ -620,7 +605,10 @@ class UsersController extends Controller
                     $user->id,
                     $user->first_name . ' ' . $user->last_name,
                     $user->email,
+                    $user->user_type ?? 'student',
                     $user->country ?? 'N/A',
+                    $user->school_name ?? 'N/A',
+                    $user->grade_level ?? 'N/A',
                     $user->birth_year ?? 'N/A',
                     $user->status,
                     $user->created_at->format('Y-m-d H:i:s'),
@@ -635,25 +623,110 @@ class UsersController extends Controller
         return response()->stream($callback, 200, $headers);
     }
 
+    /**
+     * Get users for AJAX
+     */
     public function getUsers(Request $request)
     {
         $searchTerm = $request->input('searchTerm');
-        $userId     = $request->input('userId');
-        $users = User::where('users.is_deleted','=',0)->where('users.status','=','active');
+        $userId = $request->input('userId');
+        $userType = $request->input('user_type');
 
-        if(!empty($searchTerm)){
-            $users = $users->where('name', 'like', "%{$searchTerm}%");
+        $users = User::where('users.is_deleted', '=', 0)->where('users.status', '=', 'active');
+
+        if (!empty($searchTerm)) {
+            $users = $users->where(function ($q) use ($searchTerm) {
+                $q->where('first_name', 'like', "%{$searchTerm}%")
+                    ->orWhere('last_name', 'like', "%{$searchTerm}%")
+                    ->orWhere('name', 'like', "%{$searchTerm}%");
+            });
         }
 
-        if(!empty($userId)){ 
+        if (!empty($userId)) {
             $users = $users->where('id', '=', $userId);
         }
 
-        $users = $users->get();
-        // Perform the database query to fetch users based on the search term
+        if (!empty($userType)) {
+            $users = $users->where('user_type', '=', $userType);
+        }
 
-        // Return JSON response containing the users
+        $users = $users->get();
+
         return response()->json($users);
     }
 
+    /**
+     * Assign parent to student
+     */
+    public function assignParent(Request $request)
+    {
+        $studentId = base64_decode($request->input('student_id'));
+        $parentId = $request->input('parent_id');
+
+        $student = User::findOrFail($studentId);
+        $student->update(['parent_id' => $parentId ?: null]);
+
+        return response()->json(['success' => true, 'message' => 'Parent assigned successfully']);
+    }
+
+    /**
+     * Assign teacher to student
+     */
+    public function assignTeacher(Request $request)
+    {
+        $studentId = base64_decode($request->input('student_id'));
+        $teacherId = $request->input('teacher_id');
+        $subject = $request->input('subject');
+
+        $student = User::findOrFail($studentId);
+
+        if ($teacherId) {
+            $student->teachers()->syncWithoutDetaching([
+                $teacherId => ['subject' => $subject, 'assigned_at' => now()]
+            ]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Teacher assigned successfully']);
+    }
+
+    /**
+     * Remove teacher from student
+     */
+    public function removeTeacher(Request $request)
+    {
+        $studentId = base64_decode($request->input('student_id'));
+        $teacherId = $request->input('teacher_id');
+
+        $student = User::findOrFail($studentId);
+        $student->teachers()->detach($teacherId);
+
+        return response()->json(['success' => true, 'message' => 'Teacher removed successfully']);
+    }
+
+    /**
+     * Add child to parent
+     */
+    public function addChild(Request $request)
+    {
+        $parentId = base64_decode($request->input('parent_id'));
+        $studentId = $request->input('student_id');
+
+        $student = User::findOrFail($studentId);
+        $student->update(['parent_id' => $parentId]);
+
+        return response()->json(['success' => true, 'message' => 'Child added successfully']);
+    }
+
+    /**
+     * Remove child from parent
+     */
+    public function removeChild(Request $request)
+    {
+        $studentId = $request->input('student_id');
+
+        $student = User::findOrFail($studentId);
+        $student->update(['parent_id' => null]);
+
+        return response()->json(['success' => true, 'message' => 'Child removed successfully']);
+    }
 }

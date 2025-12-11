@@ -53,6 +53,7 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth:admin']], function () 
         Route::get('/', [App\Http\Controllers\Admin\UsersController::class, 'index'])->name('adminUsers');
         Route::any('/getRecords', [App\Http\Controllers\Admin\UsersController::class, 'getRecords'])->name('adminUserGetRecords');
         Route::get('/view/{id}', [App\Http\Controllers\Admin\UsersController::class, 'view'])->name('admin.users.view');
+        Route::get('/create', [App\Http\Controllers\Admin\UsersController::class, 'create'])->name('admin.users.create');
         Route::get('/edit/{id}', [App\Http\Controllers\Admin\UsersController::class, 'create'])->name('adminUserEdit');
         Route::post('/store', [App\Http\Controllers\Admin\UsersController::class, 'store'])->name('adminUserStore');
         Route::get('/delete/{id}', [App\Http\Controllers\Admin\UsersController::class, 'delete'])->name('adminUserDelete');
@@ -60,6 +61,12 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth:admin']], function () 
         Route::post('/bulk-action', [App\Http\Controllers\Admin\UsersController::class, 'bulkAction'])->name('admin.users.bulkAction');
         Route::get('/export', [App\Http\Controllers\Admin\UsersController::class, 'export'])->name('admin.users.export');
         Route::get('/get-users', [App\Http\Controllers\Admin\UsersController::class, 'getUsers'])->name('adminGetUsers');
+        // User relationships
+        Route::post('/assign-parent', [App\Http\Controllers\Admin\UsersController::class, 'assignParent'])->name('admin.users.assignParent');
+        Route::post('/assign-teacher', [App\Http\Controllers\Admin\UsersController::class, 'assignTeacher'])->name('admin.users.assignTeacher');
+        Route::post('/remove-teacher', [App\Http\Controllers\Admin\UsersController::class, 'removeTeacher'])->name('admin.users.removeTeacher');
+        Route::post('/add-child', [App\Http\Controllers\Admin\UsersController::class, 'addChild'])->name('admin.users.addChild');
+        Route::post('/remove-child', [App\Http\Controllers\Admin\UsersController::class, 'removeChild'])->name('admin.users.removeChild');
     });
 
     // ✅ Admin Management Routes

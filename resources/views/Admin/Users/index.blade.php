@@ -3,6 +3,54 @@
 <!-- Main content -->
 <section class="content">
   <div class="container-fluid">
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+      <div class="col-lg-3 col-6">
+        <div class="small-box bg-info">
+          <div class="inner">
+            <h3>{{ $totalUsers ?? 0 }}</h3>
+            <p>Total Users</p>
+          </div>
+          <div class="icon">
+            <i class="fas fa-users"></i>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-6">
+        <div class="small-box bg-primary">
+          <div class="inner">
+            <h3>{{ $totalStudents ?? 0 }}</h3>
+            <p>Students</p>
+          </div>
+          <div class="icon">
+            <i class="fas fa-user-graduate"></i>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-6">
+        <div class="small-box bg-success">
+          <div class="inner">
+            <h3>{{ $totalParents ?? 0 }}</h3>
+            <p>Parents</p>
+          </div>
+          <div class="icon">
+            <i class="fas fa-user-friends"></i>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-6">
+        <div class="small-box bg-warning">
+          <div class="inner">
+            <h3>{{ $totalTeachers ?? 0 }}</h3>
+            <p>Teachers</p>
+          </div>
+          <div class="icon">
+            <i class="fas fa-chalkboard-teacher"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="row">
       <div class="col-12">
         <div class="card">
@@ -14,6 +62,9 @@
                 <h3 class="card-title">Users Management</h3>
               </div>
               <div class="col-md-6 text-right">
+                <a href="{{ route('admin.users.create') }}" class="btn btn-success">
+                  <i class="fas fa-plus"></i> Add User
+                </a>
                 <button type="button" class="btn btn-info" id="exportBtn">
                   <i class="fas fa-download"></i> Export CSV
                 </button>
@@ -28,7 +79,15 @@
           <div class="card-body">
             <form id="filterForm" class="mb-3">
               <div class="row">
-                <div class="col-md-3">
+                <div class="col-md-2">
+                  <select name="user_type" id="user_type" class="form-control">
+                    <option value="">All Types</option>
+                    <option value="student">Student</option>
+                    <option value="parent">Parent</option>
+                    <option value="teacher">Teacher</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
                   <select name="status" id="status" class="form-control">
                     <option value="">All Status</option>
                     <option value="active">Active</option>
@@ -36,8 +95,8 @@
                     <option value="blocked">Blocked</option>
                   </select>
                 </div>
-                <div class="col-md-3">
-                  <input type="text" name="country" id="country" class="form-control" placeholder="Filter by Country">
+                <div class="col-md-2">
+                  <input type="text" name="country" id="country" class="form-control" placeholder="Country">
                 </div>
                 <div class="col-md-2">
                   <input type="date" name="date_from" id="date_from" class="form-control" placeholder="From Date">
@@ -46,8 +105,8 @@
                   <input type="date" name="date_to" id="date_to" class="form-control" placeholder="To Date">
                 </div>
                 <div class="col-md-2">
-                  <button type="button" class="btn btn-primary" id="applyFilters">Apply Filters</button>
-                  <button type="button" class="btn btn-secondary" id="resetFilters">Reset</button>
+                  <button type="button" class="btn btn-primary" id="applyFilters"><i class="fas fa-filter"></i> Filter</button>
+                  <button type="button" class="btn btn-secondary" id="resetFilters"><i class="fas fa-undo"></i></button>
                 </div>
               </div>
             </form>
@@ -69,19 +128,18 @@
               </div>
             </form>
 
-            <table id="userTable" class="table table-bordered table-hover">
+            <table id="userTable" class="table table-bordered table-hover table-striped">
               <thead>
               <tr>
-                <th data-orderable="false"><input type="checkbox" id="selectAll"></th>
-                <th data-orderable="false">Image</th>
-                <th>Fullname</th>
+                <th data-orderable="false" width="30"><input type="checkbox" id="selectAll"></th>
+                <th data-orderable="false" width="60">Image</th>
+                <th>Name</th>
                 <th>Email</th>
-                <th>Birthyear</th>
+                <th width="80">Type</th>
                 <th>Country</th>
-                <th>Chats</th>
-                <th>Last Active</th>
-                <th data-orderable="false">Status</th>
-                <th data-orderable="false">Action</th>
+                <th width="60">Chats</th>
+                <th data-orderable="false" width="60">Status</th>
+                <th data-orderable="false" width="120">Action</th>
               </tr>
               </thead>
               <tbody>
@@ -93,7 +151,9 @@
     </div>
   </div>
 </section>
+@endsection
 
+@section('script')
 <script>
 $(function () {
   var dataTable = $("#userTable").DataTable({
@@ -116,6 +176,7 @@ $(function () {
       headers: {'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')},
       url: '{{ route("adminUserGetRecords") }}',
       'data': function(data) {
+        data.user_type = $("#user_type").val();
         data.status = $("#status").val();
         data.country = $("#country").val();
         data.date_from = $("#date_from").val();
@@ -139,6 +200,7 @@ $(function () {
   // Export functionality
   $('#exportBtn').click(function() {
     var params = new URLSearchParams();
+    if ($('#user_type').val()) params.append('user_type', $('#user_type').val());
     if ($('#status').val()) params.append('status', $('#status').val());
     if ($('#country').val()) params.append('country', $('#country').val());
     if ($('#date_from').val()) params.append('date_from', $('#date_from').val());
@@ -206,14 +268,11 @@ $(function () {
     }
   });
 
-  // Update table to include checkboxes (this would need to be done in the controller response)
-  // For now, we'll add checkboxes via JavaScript after table loads
   dataTable.on('draw', function() {
     $('.user-checkbox').change(toggleBulkActionBtn);
   });
 });
 
-// Helper functions
 function ConfirmStatusFunction(url) {
   if (confirm('Are you sure you want to change the status?')) {
     window.location.href = url;
@@ -228,5 +287,4 @@ function ConfirmDeleteFunction(url) {
   return false;
 }
 </script>
-
 @endsection
