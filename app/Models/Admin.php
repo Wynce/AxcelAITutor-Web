@@ -9,6 +9,8 @@ class Admin extends Authenticatable
 {
     use Notifiable;
 
+    protected $table = 'admins';
+    
     protected $guard = 'admin';
 
     protected $fillable = [
@@ -22,5 +24,12 @@ class Admin extends Authenticatable
     public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function updateLastLogin($ip)
+    {
+        $this->last_login_at = now();
+        $this->last_login_ip = $ip;
+        $this->save();
     }
 }

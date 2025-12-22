@@ -10,6 +10,11 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+// Add login route for auth middleware
+Route::get('/login', function() {
+    return redirect()->route('adminLogin');
+})->name('login');
+
 // Clear cache routes
 Route::get('/clear-route-cache', function() {
     Artisan::call('route:clear');
