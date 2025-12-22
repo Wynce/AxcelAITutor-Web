@@ -26,6 +26,19 @@ Route::get('/clear-config-cache', function () {
     return response()->json(['message' => 'Configuration cache cleared successfully.']);
 });
 
+Route::get('/clear-view-cache', function () {
+    Artisan::call('view:clear');
+    return response()->json(['message' => 'View cache cleared successfully.']);
+});
+
+Route::get('/clear-all-cache', function () {
+    Artisan::call('cache:clear');
+    Artisan::call('config:clear');
+    Artisan::call('view:clear');
+    Artisan::call('route:clear');
+    return response()->json(['message' => 'All cache cleared successfully.']);
+});
+
 Route::get('/create-symlink', function () {
     Artisan::call('storage:link');
     return "Symlink created successfully!";
